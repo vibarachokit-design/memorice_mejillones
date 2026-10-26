@@ -360,6 +360,28 @@
         }
         .btn-copy.copied { background: var(--candy-green); }
 
+        /* ═══ Botones de sonido ═══ */
+        .sound-ctrls { position: fixed; bottom: 1.2rem; left: 1.2rem; z-index: 50; display: flex; gap: 0.5rem; }
+        .sound-btn {
+            width: 48px; height: 48px; border-radius: 50%;
+            background: linear-gradient(180deg, #ffe76a, var(--sun) 55%, var(--sun-dark));
+            color: var(--ink); font-size: 1.1rem;
+            border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: transform 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .sound-btn:hover { transform: translateY(-2px) scale(1.06); }
+        .sound-btn:active { transform: translateY(2px); }
+        .sound-btn.off { background: #fff; color: #9b8bb8; }
+        .sound-btn.off.music-btn::after {
+            content: ''; position: absolute; width: 30px; height: 3px; border-radius: 2px;
+            background: var(--candy-pink); transform: rotate(-45deg);
+        }
+        .music-btn { position: relative; }
+        .music-btn.playing i { animation: noteBob 0.55s ease-in-out infinite alternate; }
+        @keyframes noteBob { from { transform: translateY(1px) rotate(-8deg); } to { transform: translateY(-2px) rotate(8deg); } }
+
         /* ═══ Responsive ═══ */
         @media (max-width: 560px) {
             .game-grid { gap: 7px; }
@@ -371,6 +393,8 @@
             .game-topbar .btn-sm .txt { display: none; }
             .mini-logo { font-size: 1.05rem; }
             #share-fab { width: 50px; height: 50px; font-size: 1.15rem; bottom: 0.9rem; right: 0.9rem; }
+            .sound-ctrls { bottom: 0.9rem; left: 0.9rem; }
+            .sound-btn { width: 44px; height: 44px; font-size: 1rem; }
         }
         @media (prefers-reduced-motion: reduce) {
             #bg-rays, .candy-title span.l, .float { animation: none; }
@@ -385,6 +409,12 @@
 <!-- Fondo -->
 <div id="bg-rays" aria-hidden="true"></div>
 <canvas id="bg-canvas" aria-hidden="true"></canvas>
+
+<!-- Controles de sonido -->
+<div class="sound-ctrls">
+    <button id="music-btn" class="sound-btn music-btn" onclick="Sound.toggleMusic()" aria-label="Música de fondo" title="Música"><i class="fa-solid fa-music"></i></button>
+    <button id="sfx-btn" class="sound-btn" onclick="Sound.toggleSfx()" aria-label="Efectos de sonido" title="Efectos"><i class="fa-solid fa-volume-high"></i></button>
+</div>
 
 <!-- Toast -->
 <div id="toast" class="toast-msg success" aria-live="polite"></div>
@@ -889,6 +919,7 @@ function flipCard(idx) {
     flippedCards.push(idx);
     var slot = gameGrid.children[idx];
     slot.classList.add('flipped');
+    Sound.sfx.flip();
     slot.setAttribute('aria-label', 'Carta ' + (idx + 1) + ', ' + card.symbol.name);
 
     if (flippedCards.length === 2) {
@@ -911,6 +942,7 @@ function checkMatch() {
             c1.matched = true; c2.matched = true;
             s1.classList.add('matched'); s2.classList.add('matched');
             burstStars(s1); burstStars(s2);
+            Sound.sfx.match();
             matchedPairs++;
             document.getElementById('stat-pairs').textContent = matchedPairs + '/' + totalPairs;
             showToast('⭐ ¡' + c1.symbol.name + '!', 'success');
@@ -920,7 +952,7 @@ function checkMatch() {
         }, 350);
     } else {
         isLocked = true;
-        setTimeout(function() { s1.classList.add('no-match'); s2.classList.add('no-match'); }, 350);
+        setTimeout(function() { s1.classList.add('no-match'); s2.classList.add('no-match'); Sound.sfx.miss(); }, 350);
         setTimeout(function() {
             c1.flipped = false; c2.flipped = false;
             s1.classList.remove('flipped', 'no-match');
@@ -964,10 +996,12 @@ function showVictory() {
         (function(j) {
             setTimeout(function() {
                 document.getElementById('star-' + (j + 1)).classList.add('lit', 'pop');
+                Sound.sfx.star(j);
             }, 300 + j * 350);
         })(j);
     }
     launchConfetti();
+    Sound.sfx.win();
     if (stars === 3) {
         setTimeout(function() { showToast('🌟 ¡Memoria perfecta!', 'success'); }, 1500);
     }
@@ -1112,6 +1146,175 @@ function animateBg() {
     ctx.globalAlpha = 1;
     requestAnimationFrame(animateBg);
 }
+
+/* ═══════════════════════════════════════════════
+   SONIDO: efectos y música generados con Web Audio
+   (no necesita archivos de audio)
+   ═══════════════════════════════════════════════ */
+var Sound = (function() {
+    var ac = null, master = null, sfxBus = null, musicBus = null;
+    var sfxOn = true, musicOn = true;
+    var musicTimer = null, nextNoteTime = 0, step = 0;
+
+    try { sfxOn = localStorage.getItem('kh-sfx') !== '0'; musicOn = localStorage.getItem('kh-music') !== '0'; } catch (e) {}
+
+    function ensure() {
+        if (ac) { if (ac.state === 'suspended') ac.resume(); return true; }
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return false;
+        ac = new Ctx();
+        master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+        sfxBus = ac.createGain(); sfxBus.gain.value = sfxOn ? 0.55 : 0; sfxBus.connect(master);
+        musicBus = ac.createGain(); musicBus.gain.value = 0; musicBus.connect(master);
+        if (musicOn) startMusic();
+        return true;
+    }
+
+    /* Tono básico con envolvente */
+    function tone(freq, start, dur, opts) {
+        opts = opts || {};
+        var o = ac.createOscillator(), g = ac.createGain();
+        o.type = opts.type || 'sine';
+        o.frequency.setValueAtTime(freq, start);
+        if (opts.to) o.frequency.exponentialRampToValueAtTime(opts.to, start + dur);
+        var vol = opts.vol == null ? 0.5 : opts.vol;
+        g.gain.setValueAtTime(0.0001, start);
+        g.gain.exponentialRampToValueAtTime(vol, start + (opts.attack || 0.008));
+        g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+        o.connect(g); g.connect(opts.bus || sfxBus);
+        o.start(start); o.stop(start + dur + 0.05);
+    }
+    /* Ruido corto (para el "swish" de la carta) */
+    function noise(start, dur, vol, freq) {
+        var len = Math.floor(ac.sampleRate * dur);
+        var buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+        for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+        var src = ac.createBufferSource(); src.buffer = buf;
+        var f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq || 2500; f.Q.value = 0.8;
+        var g = ac.createGain(); g.gain.value = vol;
+        src.connect(f); f.connect(g); g.connect(sfxBus);
+        src.start(start);
+    }
+
+    function play(fn) { if (!sfxOn || !ensure()) return; fn(ac.currentTime + 0.01); }
+
+    var sfx = {
+        flip: function() { play(function(t) {
+            noise(t, 0.09, 0.35, 3200);
+            tone(520, t, 0.08, { type: 'triangle', to: 880, vol: 0.18 });
+        }); },
+        match: function() { play(function(t) {
+            [659.25, 830.61, 987.77, 1318.5].forEach(function(f, i) {
+                tone(f, t + i * 0.075, 0.22, { type: 'triangle', vol: 0.32 });
+                tone(f * 2, t + i * 0.075, 0.12, { type: 'sine', vol: 0.08 });
+            });
+        }); },
+        miss: function() { play(function(t) {
+            tone(330, t, 0.16, { type: 'square', to: 220, vol: 0.12 });
+            tone(262, t + 0.15, 0.22, { type: 'square', to: 165, vol: 0.12 });
+        }); },
+        click: function() { play(function(t) {
+            tone(880, t, 0.06, { type: 'sine', to: 1320, vol: 0.22 });
+        }); },
+        star: function(i) { play(function(t) {
+            var f = [783.99, 987.77, 1174.66][i] || 1174.66;
+            tone(f, t, 0.35, { type: 'triangle', vol: 0.35 });
+            tone(f * 1.5, t + 0.04, 0.3, { type: 'sine', vol: 0.12 });
+        }); },
+        win: function() { play(function(t) {
+            var mel = [[523.25,0],[659.25,0.12],[783.99,0.24],[1046.5,0.36],[783.99,0.54],[1046.5,0.66]];
+            mel.forEach(function(n) { tone(n[0], t + n[1], 0.3, { type: 'square', vol: 0.12 }); tone(n[0], t + n[1], 0.32, { type: 'triangle', vol: 0.22 }); });
+            [261.63, 329.63, 392].forEach(function(f) { tone(f, t + 0.66, 0.9, { type: 'triangle', vol: 0.14 }); });
+        }); }
+    };
+
+    /* ── Música de fondo: melodía alegre en bucle (Do mayor, 8 compases) ── */
+    var BPM = 112, SPB = 60 / BPM / 2; // corcheas
+    var N = { C4:261.63,D4:293.66,E4:329.63,F4:349.23,G4:392,A4:440,B4:493.88,C5:523.25,D5:587.33,E5:659.25,G5:783.99,
+              C3:130.81,F3:174.61,G3:196,A3:220 };
+    var MELODY = [
+        'E5','-','C5','-','D5','E5','G5','-',  'E5','-','C5','-','D5','-','-','-',
+        'C5','-','A4','-','B4','C5','D5','-',  'B4','-','G4','-','A4','-','-','-',
+        'E5','-','C5','-','D5','E5','G5','-',  'E5','-','G5','-','E5','D5','C5','-',
+        'D5','-','B4','-','C5','-','A4','-',   'G4','-','B4','-','C5','-','-','-'
+    ];
+    var BASS = ['C3','F3','G3','C3', 'A3','F3','G3','C3']; // un acorde por compás (8 corcheas)
+
+    function scheduleNote(i, t) {
+        var m = MELODY[i % MELODY.length];
+        if (m !== '-') tone(N[m], t, SPB * 1.6, { type: 'triangle', vol: 0.16, bus: musicBus, attack: 0.01 });
+        if (i % 8 === 0) {
+            var b = N[BASS[Math.floor(i / 8) % BASS.length]];
+            tone(b, t, SPB * 3.5, { type: 'sine', vol: 0.22, bus: musicBus, attack: 0.02 });
+            tone(b * 2, t, SPB * 3, { type: 'triangle', vol: 0.05, bus: musicBus, attack: 0.02 });
+        }
+        if (i % 8 === 4) {
+            var b2 = N[BASS[Math.floor(i / 8) % BASS.length]];
+            tone(b2 * 1.5, t, SPB * 2.5, { type: 'sine', vol: 0.12, bus: musicBus, attack: 0.02 });
+        }
+        if (i % 2 === 1) { // charles suave
+            var len = Math.floor(ac.sampleRate * 0.03), buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+            for (var k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * (1 - k / len);
+            var s = ac.createBufferSource(); s.buffer = buf;
+            var f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000;
+            var g = ac.createGain(); g.gain.value = 0.05;
+            s.connect(f); f.connect(g); g.connect(musicBus); s.start(t);
+        }
+    }
+    function scheduler() {
+        while (nextNoteTime < ac.currentTime + 0.15) {
+            scheduleNote(step, nextNoteTime);
+            nextNoteTime += SPB; step++;
+        }
+    }
+    function startMusic() {
+        if (!ac || musicTimer) return;
+        nextNoteTime = ac.currentTime + 0.1; step = 0;
+        musicBus.gain.cancelScheduledValues(ac.currentTime);
+        musicBus.gain.setValueAtTime(0, ac.currentTime);
+        musicBus.gain.linearRampToValueAtTime(0.5, ac.currentTime + 1.2);
+        musicTimer = setInterval(scheduler, 40);
+    }
+    function stopMusic() {
+        if (!ac || !musicTimer) return;
+        clearInterval(musicTimer); musicTimer = null;
+        musicBus.gain.cancelScheduledValues(ac.currentTime);
+        musicBus.gain.setValueAtTime(musicBus.gain.value, ac.currentTime);
+        musicBus.gain.linearRampToValueAtTime(0, ac.currentTime + 0.3);
+    }
+
+    function save() { try { localStorage.setItem('kh-sfx', sfxOn ? '1' : '0'); localStorage.setItem('kh-music', musicOn ? '1' : '0'); } catch (e) {} }
+    function refreshButtons() {
+        var bs = document.getElementById('sfx-btn'), bm = document.getElementById('music-btn');
+        if (bs) { bs.classList.toggle('off', !sfxOn); bs.setAttribute('aria-pressed', sfxOn); bs.innerHTML = '<i class="fa-solid ' + (sfxOn ? 'fa-volume-high' : 'fa-volume-xmark') + '"></i>'; bs.title = sfxOn ? 'Silenciar efectos' : 'Activar efectos'; }
+        if (bm) { bm.classList.toggle('off', !musicOn); bm.classList.toggle('playing', musicOn); bm.setAttribute('aria-pressed', musicOn); bm.title = musicOn ? 'Pausar música' : 'Activar música'; }
+    }
+
+    /* El navegador sólo permite sonar tras la primera interacción */
+    function unlock() { ensure(); document.removeEventListener('pointerdown', unlock); document.removeEventListener('keydown', unlock); }
+    document.addEventListener('pointerdown', unlock);
+    document.addEventListener('keydown', unlock);
+
+    /* Pausar música si la pestaña queda oculta */
+    document.addEventListener('visibilitychange', function() {
+        if (!ac) return;
+        if (document.hidden) ac.suspend(); else ac.resume();
+    });
+
+    /* Clic en cualquier botón */
+    document.addEventListener('click', function(e) {
+        var b = e.target.closest && e.target.closest('.btn, .diff-btn, #share-fab, .modal-close');
+        if (b) sfx.click();
+    });
+
+    return {
+        sfx: sfx,
+        toggleSfx: function() { sfxOn = !sfxOn; if (ensure()) sfxBus.gain.value = sfxOn ? 0.55 : 0; if (sfxOn) sfx.click(); save(); refreshButtons(); },
+        toggleMusic: function() { musicOn = !musicOn; if (ensure()) { musicOn ? startMusic() : stopMusic(); } save(); refreshButtons(); },
+        refresh: refreshButtons
+    };
+})();
+Sound.refresh();
 
 /* Abanico de 3 cartas al azar en la portada */
 (function buildHeroFan() {
