@@ -592,6 +592,51 @@
 .lupa-target:not([hidden]) { display:flex; align-items:center; justify-content:center; gap:14px; }
 .lupa-target img { flex:none; width:clamp(62px,16vw,92px); height:clamp(88px,22vw,126px); object-fit:contain; border-radius:10px; border:3px solid #fdaf00; background:white; }
 .lupa-target strong { font-size:clamp(1.8rem,6vw,2.9rem); }
+
+/* ═══ Minijuegos: barra compacta y cartas grandes ═══ */
+#mini-screen { justify-content:flex-start; padding-top:max(.8rem, env(safe-area-inset-top)); }
+.mini-wrap { padding:0 0 1rem; }
+.mini-top { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.mini-top .mini-logo-art { flex:1 1 auto; margin:0; width:auto; height:clamp(64px,13vh,120px); background-size:contain; background-position:center; aspect-ratio:auto; }
+.mini-top .mini-logo-art[hidden] { display:block; visibility:hidden; }
+.mini-icon-btn { flex:none; }
+.mini-hud { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:.45rem; margin:.5rem auto .2rem; max-width:620px; }
+.mini-hud .mini-progress { display:inline-flex; margin:0; padding:.3rem .9rem; border-radius:50px; font-size:1rem; box-shadow:0 3px 0 #54216f; }
+.mini-hud .mini-progress:empty { display:none; }
+.mini-hud .vb-bonus { margin:0; font-size:1rem; padding:.3rem .9rem; }
+.mini-hud .lupa-target:not([hidden]) { margin:0; padding:.25rem .9rem .25rem .3rem; gap:.55rem; border-width:3px; border-radius:50px; box-shadow:0 3px 0 #54216f; }
+.mini-hud .lupa-target img { width:38px; height:57px; border-width:2px; border-radius:7px; }
+.mini-hud .lupa-target span { font-size:.68rem; letter-spacing:.1em; text-align:left; }
+.mini-hud .lupa-target strong { font-size:clamp(1.05rem,4.6vw,1.4rem); line-height:1.05; text-align:left; }
+.mini-instruction { margin:.45rem auto .2rem; padding:.3rem .8rem; font-size:.95rem; border-width:2px; border-radius:14px; max-width:520px; }
+#mini-title { margin:.4rem 0 .2rem; }
+#mini-title[hidden] { display:none; }
+
+/* Tamaño de carta: lo más grande que quepa en ancho y alto */
+#mini-screen { --hud: 300px; }
+#mini-screen.mode-vector { --hud: 250px; }
+.mini-stage { --cw: min(200px, 22vw, calc((100vh - var(--hud)) * .6667)); gap:14px; margin:.7rem auto 0; min-height:0; }
+@supports (height: 100dvh) { .mini-stage { --cw: min(200px, 22vw, calc((100dvh - var(--hud)) * .6667)); } }
+.mini-stage .mini-card { width:var(--cw); border-width:4px; border-radius:16px; }
+.mini-card.active { transform:scale(1.07); }
+.mini-stage .mini-card { box-sizing:border-box; flex:none; }
+.vb-bonus[hidden] { display:none !important; }
+
+/* Celular: 2 cartas por fila (Lupa queda en triángulo, Vector Beat en 2×2) */
+@media (max-width: 600px) {
+  #mini-screen { padding-left:8px; padding-right:8px; }
+  .mini-wrap { width:100%; padding:0 0 1rem; }
+  .mini-top .mini-icon-btn { min-height:48px; padding:.4rem .85rem; font-size:1.2rem; }
+  .mini-top .mini-icon-btn .txt { display:none; }
+  .mini-top .mini-logo-art { height:clamp(58px,11vh,92px); }
+  #mini-screen { --hud: 290px; }
+  #mini-screen.mode-vector { --hud: 268px; }
+  .mini-stage { --cw: min(calc((100vw - 30px) / 2), 230px, calc((100vh - var(--hud)) / 2 * .6667)); gap:12px; max-width:calc(var(--cw) * 2 + 14px); }
+  @supports (height: 100dvh) { .mini-stage { --cw: min(calc((100vw - 30px) / 2), 230px, calc((100dvh - var(--hud)) / 2 * .6667)); } }
+  .mini-stage .mini-card { width:var(--cw); border-width:3px; border-radius:14px; }
+  .mini-hud .mini-progress, .mini-hud .vb-bonus { font-size:.92rem; padding:.25rem .75rem; }
+  .mini-instruction { font-size:.88rem; }
+}
 </style>
 </head>
 <body>
@@ -717,9 +762,17 @@
 <!-- ═══════════════ PANTALLA DE VICTORIA ═══════════════ -->
 <section id="mini-screen" class="screen hidden" role="main">
   <div class="mini-wrap">
-    <div class="mini-top"><button class="btn btn-white btn-sm" onclick="goToStart()">← Menú</button><button class="btn btn-sun btn-sm" onclick="startMini(miniMode)">↻ Reiniciar</button></div>
-    <h2 id="mini-title"></h2><div id="mini-logo-art" class="mini-logo-art" role="img" hidden></div><p id="mini-progress" class="mini-progress"></p><div style="text-align:center"><span id="vb-bonus" class="vb-bonus" hidden></span></div>
-    <div id="lupa-target" class="lupa-target" hidden><img id="lupa-target-image" alt=""><div><span>BUSCA A</span><strong id="lupa-target-name"></strong></div></div>
+    <div class="mini-top">
+      <button class="btn btn-white btn-sm mini-icon-btn" onclick="goToStart()" aria-label="Volver al menú" title="Menú">←<span class="txt"> Menú</span></button>
+      <div id="mini-logo-art" class="mini-logo-art" role="img" hidden></div>
+      <button class="btn btn-sun btn-sm mini-icon-btn" onclick="startMini(miniMode)" aria-label="Reiniciar" title="Reiniciar">↻<span class="txt"> Reiniciar</span></button>
+    </div>
+    <h2 id="mini-title"></h2>
+    <div class="mini-hud">
+      <p id="mini-progress" class="mini-progress"></p>
+      <span id="vb-bonus" class="vb-bonus" hidden></span>
+      <div id="lupa-target" class="lupa-target" hidden><img id="lupa-target-image" alt=""><div><span>BUSCA A</span><strong id="lupa-target-name"></strong></div></div>
+    </div>
     <p id="mini-instruction" class="mini-instruction" aria-live="polite"></p>
     <div id="mini-stage" class="mini-stage"></div>
     <div id="mini-controls" class="btn-row"></div>
@@ -764,7 +817,7 @@
 /* Tres aventuras: la lógica clásica se conserva; los minijuegos comparten los temporizadores de partida. */
 var miniMode='', miniRound=0, miniTarget=null, miniSequence=[], miniInput=0, miniAccept=false, miniChoices=[];
 function chooseClassic(){ document.getElementById('classic-levels').hidden=false; document.getElementById('classic-levels').scrollIntoView({behavior:'smooth',block:'nearest'}); }
-function startMini(mode){ vbScore=0; vbRoundHits=0; Sound.selectTrack(mode); resetRoundAsync(); stopTimer(); miniMode=mode; miniRound=0; miniSequence=[]; miniAccept=false; showScreen(document.getElementById('mini-screen')); nextMiniRound(); }
+function startMini(mode){ var ms=document.getElementById('mini-screen'); ms.classList.remove('mode-lupa','mode-vector'); ms.classList.add('mode-'+mode); vbScore=0; vbRoundHits=0; Sound.selectTrack(mode); resetRoundAsync(); stopTimer(); miniMode=mode; miniRound=0; miniSequence=[]; miniAccept=false; showScreen(document.getElementById('mini-screen')); nextMiniRound(); }
 function miniText(title,progress,instruction){ var heading=document.getElementById('mini-title'), art=document.getElementById('mini-logo-art'); var playing=title.indexOf('Lupa?')!==-1 || title.indexOf('Vector Beat')!==-1; heading.textContent=title; heading.hidden=playing; art.hidden=!playing; art.className='mini-logo-art '+(miniMode==='lupa'?'lupa-logo':'vector-logo'); art.setAttribute('aria-label', title); document.getElementById('mini-progress').textContent=progress; document.getElementById('mini-instruction').textContent=instruction; }
 function miniButton(symbol,face,handler){ var b=document.createElement('button'); b.className='mini-card'; b.setAttribute('aria-label',face ? symbol.name : 'Carta boca abajo'); var im=document.createElement('img'); im.src=face?symbol.img:CARD_BACK; im.alt=''; b.appendChild(im); b.addEventListener('click',handler); return b; }
 function finishMini(){ miniAccept=false; document.getElementById('lupa-target').hidden=true; document.getElementById('mini-stage').innerHTML=''; miniText('¡Lo lograste!',(miniMode==='lupa' ? '10 niveles completados' : '5 desafíos completados'),(miniMode==='vector' && vbScore>0 ? '¡Ganaste '+vbScore+' puntos de bonus por tocar al ritmo! ' : '')+'¡Jugaste increíble! ¿Quieres intentarlo otra vez?'); vbUpdateBadge(vbScore>0); var c=document.getElementById('mini-controls'); c.innerHTML=''; var b=document.createElement('button'); b.className='btn btn-sun'; b.textContent='Jugar otra vez'; b.onclick=function(){startMini(miniMode)}; c.appendChild(b); launchConfetti(); Sound.sfx.win(); }
@@ -773,17 +826,17 @@ function nextMiniRound(){
  if(miniMode==='lupa'){
   var pool=shuffle(ALL_SYMBOLS); miniTarget=pool[0]; miniChoices=shuffle(pool.slice(0,3));
   document.getElementById('lupa-target-name').textContent=miniTarget.name; document.getElementById('lupa-target-image').src=miniTarget.img; document.getElementById('lupa-target').hidden=false;
-  miniText('🔎 ¿Dónde está Lupa?','Nivel '+miniRound+' de 10','¡Observa bien antes de que se mezclen!');
+  miniText('🔎 ¿Dónde está Lupa?','🎯 Nivel '+miniRound+'/10','¡Observa bien antes de que se mezclen!');
   miniChoices.forEach(function(sym){stage.appendChild(miniButton(sym,true,function(){}));});
   roundLater(function(){
-    miniText('🔎 ¿Dónde está Lupa?','Nivel '+miniRound+' de 10','¡Sigue la carta mientras se mezclan!');
+    miniText('🔎 ¿Dónde está Lupa?','🎯 Nivel '+miniRound+'/10','¡Sigue la carta mientras se mezclan!');
     stage.innerHTML=''; miniChoices.forEach(function(sym){ stage.appendChild(miniButton(sym,false,function(){lupaPick(sym,this)})); });
     var swapCount=3+Math.floor((miniRound-1)/2), duration=miniRound<5 ? 480-(miniRound-1)*20 : 300-(miniRound-5)*25, interval=duration+(miniRound<5?160:90);
     for(var n=0;n<swapCount;n++) (function(step){roundLater(function(){var i=Math.floor(Math.random()*2);animateSwap(stage,i,i+1,duration);},300+step*interval);})(n);
     roundLater(function(){document.getElementById('mini-instruction').textContent='¡Ahora toca la carta que buscas!';miniAccept=true},300+(swapCount-1)*interval+duration+150);
   },2500);
  } else {
-  miniText('🚀 Secuencia de Vector Beat','Ronda '+miniRound+' de 5','Observa la secuencia de personajes.');
+  miniText('🚀 Secuencia de Vector Beat','🚀 Ronda '+miniRound+'/5','Observa la secuencia de personajes.');
   if(miniRound===1) miniChoices=shuffle(ALL_SYMBOLS).slice(0,4);
   if(miniRound===1) miniSequence=shuffle([0,1,2,3]); else miniSequence.push(Math.floor(Math.random()*miniChoices.length)); miniInput=0;
   miniChoices.forEach(function(sym,i){stage.appendChild(miniButton(sym,true,function(){vectorPick(i)}));});
@@ -821,7 +874,7 @@ function playSequence(tries){
     roundLater(function(){ stage.children[index].classList.add('active'); Sound.note(index); }, times[i]);
     roundLater(function(){ stage.children[index].classList.remove('active'); }, times[i] + hold);
   });
-  roundLater(function(){ miniAccept=true; document.getElementById('mini-instruction').textContent='¡Tu turno! Repite la secuencia tocando al ritmo para ganar bonus.'; }, times[miniSequence.length]);
+  roundLater(function(){ miniAccept=true; document.getElementById('mini-instruction').textContent='👆 ¡Tu turno! Tócalas al ritmo para ganar bonus.'; }, times[miniSequence.length]);
 }
 /* Pulso visual: el logo y las cartas laten con cada tiempo de la canción */
 (function vbPulse(){
@@ -846,8 +899,8 @@ function vbUpdateBadge(bump){
   if (miniMode!=='vector') { el.hidden=true; return; }
   el.hidden=false;
   var clk=Sound.musicClock();
-  if (!clk.wanted) { el.className='vb-bonus muted'; el.textContent='🎵 Activa la música para ganar bonus de ritmo'; return; }
-  el.className='vb-bonus'; el.textContent='🎵 Bonus ritmo: '+vbScore+' ⭐';
+  if (!clk.wanted) { el.className='vb-bonus muted'; el.textContent='🎵 Activa la música para ganar bonus'; return; }
+  el.className='vb-bonus'; el.textContent='🎵 Bonus: '+vbScore+' ⭐';
   if (bump) { void el.offsetWidth; el.classList.add('bump'); }
 }
 function vbPopText(target,text,kind){
